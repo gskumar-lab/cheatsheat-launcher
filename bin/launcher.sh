@@ -26,9 +26,17 @@ if [[ "$1" == "--edit" ]]; then
     fi
 
     TARGET_FILE="$DATA_DIR/$SELECTION"
-    log "Opening editor for target file: $TARGET_FILE"
+    # Check if existing file is a PDF or Image
+    if [[ -f "$TARGET_FILE" ]]; then
+        MIME_TYPE=$(file -b --mime-type "$TARGET_FILE")
+        if [[ "$MIME_TYPE" == image/* || "$MIME_TYPE" == application/pdf ]]; then
+            log "Cannot edit binary files. Opening with xdg-open instead."
+            xdg-open "$TARGET_FILE" >/dev/null 2>&1 &
+            exit 0
+        fi
+    fi
 
-    # Open the file in the terminal editor
+    log "Opening editor for target file: $TARGET_FILE"
     $TERMINAL_CMD bash -c "$MY_EDITOR \"$TARGET_FILE\""
     log "Editor closed. Exiting."
     exit 0
@@ -101,12 +109,20 @@ fi
 
 # Final check and display
 if [[ -f "$TARGET_FILE" ]]; then
-    log "Copying content to Wayland clipboard."
-    wl-copy < "$TARGET_FILE"
-    notify-send "Cheat Sheet Launcher" "Copied '$SELECTION' to clipboard."
+    # Detect file type
+    MIME_TYPE=$(file -b --mime-type "$TARGET_FILE")
+    if [[ "$MIME_TYPE" == image/* || "$MIME_TYPE" == application/pdf ]]; then
+        log "Binary file detected ($MIME_TYPE). Opening with xdg-open."
+        xdg-open "$TARGET_FILE" >/dev/null 2>&1 &
+        notify-send "Cheat Sheet Launcher" "Opened '$SELECTION'."
+    else
+        log "Text file detected. Copying content to Wayland clipboard."
+        wl-copy < "$TARGET_FILE"
+        notify-send "Cheat Sheet Launcher" "Copied '$SELECTION' to clipboard."
 
-    log "Opening terminal viewer (less)."
-    $TERMINAL_CMD bash -c "less \"$TARGET_FILE\""
+        log "Opening terminal viewer (less)."
+        $TERMINAL_CMD bash -c "less \"$TARGET_FILE\""
+    fi
 else
     log "ERROR: '$SELECTION' could not be resolved locally or externally."
     notify-send "Cheat Sheet Launcher" "Error: '$SELECTION' not found locally or externally."
