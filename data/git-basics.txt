@@ -1,0 +1,2 @@
+git status : Show working tree status
+git commit --amend : Modify the last commit
