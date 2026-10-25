@@ -20,6 +20,7 @@ export SYNC_LOCK="$STATE_DIR/sync.lock"
 export GIT_BRANCH="main"
 export GIT_USER_NAME="Cheatsheet Hub"
 export GIT_USER_EMAIL="hub@local"
+export AUTOSYNC_FILE="$STATE_DIR/.autosync"
 
 mkdir -p "$LIB_DIR" "$DATA_DIR" "$STATE_DIR"
 
@@ -89,6 +90,11 @@ sync_data() {
     current_remote=$(git remote get-url origin 2>/dev/null || true)
 
     if [[ -z "$current_remote" ]]; then
+        if [[ ! -t 0 ]]; then
+            notify_hub critical 0 "Sync Error" "Remote missing. Run a manual sync to configure it."
+            exec 9>&-
+            return 1
+        fi
         notify_hub normal 0 "Cheatsheet Hub" "Remote missing. Awaiting user input..."
         local user_remote_url
         user_remote_url=$(fuzzel_input "Git Remote URL ❯ ")
@@ -114,7 +120,7 @@ sync_data() {
         return 0
     fi
 
-    if ! timeout 30s git fetch origin "$GIT_BRANCH" >/dev/null 2>&1; then
+    if ! timeout 30s git fetch origin >/dev/null 2>&1; then
         if timeout 30s git push -u origin "$GIT_BRANCH"; then
             notify_hub normal 3000 "Cheatsheet Hub" "Initial branch pushed to remote."
         else
@@ -122,6 +128,13 @@ sync_data() {
             exec 9>&-
             return 1
         fi
+        exec 9>&-
+        return 0
+    fi
+
+    if ! git rev-parse --verify "origin/$GIT_BRANCH" >/dev/null 2>&1; then
+        notify_hub normal 3000 "Cheatsheet Hub" "Upstream branch missing. Pushing..."
+        timeout 30s git push -u origin "$GIT_BRANCH"
         exec 9>&-
         return 0
     fi
@@ -160,7 +173,7 @@ sync_data() {
         git add .
         export GIT_EDITOR=true
 
-        if timeout 30s git rebase --continue; then
+        if timeout 30s sh -c 'git rebase --continue || git rebase --skip'; then
             timeout 30s git push origin "$GIT_BRANCH"
             notify_hub normal 3000 "Cheatsheet Hub" "Conflict resolved automatically."
         else
@@ -172,4 +185,3 @@ sync_data() {
     fi
     exec 9>&-
 }
-
