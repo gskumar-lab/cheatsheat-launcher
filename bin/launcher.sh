@@ -4,22 +4,32 @@ REPO_DIR="$HOME/.cheatsheets"
 DATA_DIR="$REPO_DIR/data"
 TERMINAL_CMD="foot -e" # Update this to your preferred terminal
 
+MY_EDITOR="${EDITOR:-vim}" # Uses your default $EDITOR, falls back to vim
+
+# --- Phase 4: Quick Create / Edit ---
+if [[ "$1" == "--edit" ]]; then
+    # Select an existing file, or type a new name to create it
+    SELECTION=$(ls -1 "$DATA_DIR" 2>/dev/null | fuzzel --dmenu -p "Edit/New: ")
+
+    # Exit if nothing was typed
+    [[ -z "$SELECTION" ]] && exit 0
+
+    TARGET_FILE="$DATA_DIR/$SELECTION"
+
+    # Open the file in the terminal editor
+    $TERMINAL_CMD bash -c "$MY_EDITOR \"$TARGET_FILE\""
+    exit 0
+fi
+
 # --- Phase 3: Cloud Synchronization ---
 if [[ "$1" == "--sync" ]]; then
     notify-send "Cheat Sheet Launcher" "Starting Git sync..."
 
     cd "$REPO_DIR" || exit 1
-
-    # Stage all changes
     git add .
-
-    # Commit if there are changes, suppress error if nothing to commit
     git commit -m "Auto-sync: $(date +'%Y-%m-%d %H:%M:%S')" > /dev/null 2>&1
-
-    # Pull remote changes and push local ones
     git pull --rebase
     git push
-
     notify-send "Cheat Sheet Launcher" "Sync complete!"
     exit 0
 fi
