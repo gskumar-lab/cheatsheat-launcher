@@ -1,7 +1,28 @@
 #!/usr/bin/env bash
 
-DATA_DIR="$HOME/.cheatsheets/data"
+REPO_DIR="$HOME/.cheatsheets"
+DATA_DIR="$REPO_DIR/data"
 TERMINAL_CMD="foot -e" # Update this to your preferred terminal
+
+# --- Phase 3: Cloud Synchronization ---
+if [[ "$1" == "--sync" ]]; then
+    notify-send "Cheat Sheet Launcher" "Starting Git sync..."
+
+    cd "$REPO_DIR" || exit 1
+
+    # Stage all changes
+    git add .
+
+    # Commit if there are changes, suppress error if nothing to commit
+    git commit -m "Auto-sync: $(date +'%Y-%m-%d %H:%M:%S')" > /dev/null 2>&1
+
+    # Pull remote changes and push local ones
+    git pull --rebase
+    git push
+
+    notify-send "Cheat Sheet Launcher" "Sync complete!"
+    exit 0
+fi
 
 # Read local files and pipe them into Fuzzel
 SELECTION=$(ls -1 "$DATA_DIR" 2>/dev/null | fuzzel --dmenu -p "Cheat Sheet: ")
@@ -13,13 +34,8 @@ TARGET_FILE="$DATA_DIR/$SELECTION"
 
 # If the file exists locally, display and copy it
 if [[ -f "$TARGET_FILE" ]]; then
-    # Copy file contents to the Wayland clipboard
     wl-copy < "$TARGET_FILE"
-
-    # Send a quick desktop notification
     notify-send "Cheat Sheet Launcher" "Copied '$SELECTION' to clipboard."
-
-    # Open the file in a new terminal window using less so it stays open
     $TERMINAL_CMD bash -c "less \"$TARGET_FILE\""
 else
     # External Match: Notify and fetch
@@ -34,6 +50,5 @@ else
         curl -s \"cheat.sh/$SELECTION\" | less -R
     fi
     "
-
     $TERMINAL_CMD bash -c "$FETCH_SCRIPT"
 fi
