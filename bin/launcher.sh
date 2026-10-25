@@ -4,6 +4,9 @@ REPO_DIR="$HOME/.cheatsheets"
 DATA_DIR="$REPO_DIR/data"
 TERMINAL_CMD="foot -e" # Update this to your preferred terminal
 MY_EDITOR="${EDITOR:-vim}" # Uses your default $EDITOR, falls back to vim
+LOG_FILE="$REPO_DIR/launcher.log"
+
+mkdir -p "$DATA_DIR"
 
 # Debugging function
 log() {
@@ -63,7 +66,7 @@ log "User selected query: $SELECTION"
 
 # --- Caching Logic ---
 # If the file exists locally, fetch and cache it first
-if [[ -f "$TARGET_FILE" ]]; then
+if [[ ! -f "$TARGET_FILE" ]]; then
     log "File does not exist locally. Attempting external fetch."
     notify-send "Cheat Sheet Launcher" "Caching external cheatsheet for '$SELECTION'..."
 
