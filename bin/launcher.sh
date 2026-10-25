@@ -1,27 +1,18 @@
 #!/usr/bin/env bash
 
-REPO_DIR="$HOME/.cheatsheets"
-DATA_DIR="$REPO_DIR/data"
-TERMINAL_CMD="foot -e" # Update this to your preferred terminal
-MY_EDITOR="${EDITOR:-vim}" # Uses your default $EDITOR, falls back to vim
-LOG_FILE="$REPO_DIR/launcher.log"
+# Source the core library
+source "$HOME/.cheatsheets/lib/core.sh"
 
-mkdir -p "$DATA_DIR"
-
-# Debugging function
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-}
-log "--- Launcher started with arguments: '$*' ---"
+log_event "--- Launcher started with arguments: '$*' ---"
 
 # --- Quick Create / Edit ---
 if [[ "$1" == "--edit" ]]; then
-    log "Running in --edit mode."
+    log_event "Running in --edit mode."
     # Select an existing file, or type a new name to create it
-    SELECTION=$(ls -1 "$DATA_DIR" 2>/dev/null | fuzzel --dmenu -p "Edit/New: ")
+    SELECTION=$(ls -1 "$DATA_DIR" 2>/dev/null | fuzzel_menu "Edit/New: ")
 
     if [[ -z "$SELECTION" ]]; then
-        log "No selection made in Fuzzel (Escape pressed). Exiting."
+        log_event "No selection made in Fuzzel. Exiting."
         exit 0
     fi
 
@@ -30,102 +21,73 @@ if [[ "$1" == "--edit" ]]; then
     if [[ -f "$TARGET_FILE" ]]; then
         MIME_TYPE=$(file -b --mime-type "$TARGET_FILE")
         if [[ "$MIME_TYPE" == image/* || "$MIME_TYPE" == application/pdf ]]; then
-            log "Cannot edit binary files. Opening with xdg-open instead."
+            log_event "Cannot edit binary files. Opening with xdg-open instead."
             xdg-open "$TARGET_FILE" >/dev/null 2>&1 &
             exit 0
         fi
     fi
 
-    log "Opening editor for target file: $TARGET_FILE"
-    $TERMINAL_CMD bash -c "$MY_EDITOR \"$TARGET_FILE\""
-    log "Editor closed. Exiting."
+    log_event "Opening editor for target file: $TARGET_FILE"
+    $TERMINAL bash -c "$MY_EDITOR \"$TARGET_FILE\""
+    log_event "Editor closed. Exiting."
     exit 0
 fi
 
 # --- Cloud Synchronization ---
 if [[ "$1" == "--sync" ]]; then
-    log "Running in --sync mode."
-    notify-send "Cheat Sheet Launcher" "Starting Git sync..."
-    cd "$REPO_DIR" || exit 1
-    log "Staging changes..."
-    git add . >> "$LOG_FILE" 2>&1
-    log "Committing changes..."
-    git commit -m "Auto-sync: $(date +'%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE" 2>&1
-    log "Pulling remote changes..."
-    git pull --rebase >> "$LOG_FILE" 2>&1
-    log "Pushing local changes..."
-    git push >> "$LOG_FILE" 2>&1
-    notify-send "Cheat Sheet Launcher" "Sync complete!"
-    log "Sync sequence finished. Exiting."
-    exit 0
+    log_event "Triggering core sync module."
+        notify_hub normal 3000 "Cheatsheet Hub" "Starting Git sync..."
+        sync_data > "$SYNC_LOG" 2>&1
+        exit 0
 fi
 
-log "Running in normal query mode."
+log_event "Running in normal query mode."
 # Read local files and pipe them into Fuzzel
-SELECTION=$(ls -1 "$DATA_DIR" 2>/dev/null | fuzzel --dmenu -p "Cheat Sheet: ")
+SELECTION=$(ls -1 "$DATA_DIR" 2>/dev/null | fuzzel_menu "Cheat Sheet: ")
 
 if [[ -z "$SELECTION" ]]; then
-    log "No selection made in Fuzzel. Exiting."
+    log_event "No selection made. Exiting."
     exit 0
 fi
 
 TARGET_FILE="$DATA_DIR/$SELECTION"
-log "User selected query: $SELECTION"
+log_event "User selected query: $SELECTION"
 
 # --- Caching Logic ---
-# If the file exists locally, fetch and cache it first
 if [[ ! -f "$TARGET_FILE" ]]; then
-    log "File does not exist locally. Attempting external fetch."
-    notify-send "Cheat Sheet Launcher" "Caching external cheatsheet for '$SELECTION'..."
+    log_event "File does not exist locally. Attempting external fetch."
+    notify_hub normal 3000 "Cheatsheet Hub" "Caching external cheatsheet for '$SELECTION'..."
 
-    # 1. Try tldr. (When piped to a file, tldr automatically strips color codes)
     if command -v tldr >/dev/null 2>&1; then
-        log "Attempting tldr fetch..."
         tldr "$SELECTION" > "$TARGET_FILE" 2>/dev/null
         if [[ ! -s "$TARGET_FILE" ]]; then
-            log "tldr returned empty/error. Removing blank file."
             rm -f "$TARGET_FILE"
-        else
-            log "tldr fetch successful."
         fi
-    else
-        log "tldr is not installed on this system."
     fi
 
     if [[ ! -f "$TARGET_FILE" ]]; then
-        log "Attempting cheat.sh fetch as fallback..."
         curl -s "cheat.sh/${SELECTION}?qT" > "$TARGET_FILE"
-
         if grep -q "Unknown topic" "$TARGET_FILE"; then
-            log "cheat.sh returned 'Unknown topic'. Deleting invalid cache."
             rm -f "$TARGET_FILE"
-        else
-            log "cheat.sh fetch successful."
         fi
     fi
-else
-    log "File found locally: $TARGET_FILE"
 fi
 
-# Final check and display
+# Final display routing (Text vs PDF/Image)
 if [[ -f "$TARGET_FILE" ]]; then
     # Detect file type
     MIME_TYPE=$(file -b --mime-type "$TARGET_FILE")
     if [[ "$MIME_TYPE" == image/* || "$MIME_TYPE" == application/pdf ]]; then
-        log "Binary file detected ($MIME_TYPE). Opening with xdg-open."
+        log_event "Binary file detected ($MIME_TYPE). Opening with xdg-open."
         xdg-open "$TARGET_FILE" >/dev/null 2>&1 &
-        notify-send "Cheat Sheet Launcher" "Opened '$SELECTION'."
+        notify_hub normal 3000 "Cheatsheet Hub" "Opened '$SELECTION'."
     else
-        log "Text file detected. Copying content to Wayland clipboard."
+        log_event "Text file detected. Copying to clipboard and opening less."
         wl-copy < "$TARGET_FILE"
-        notify-send "Cheat Sheet Launcher" "Copied '$SELECTION' to clipboard."
-
-        log "Opening terminal viewer (less)."
-        $TERMINAL_CMD bash -c "less \"$TARGET_FILE\""
+        notify_hub normal 3000 "Cheatsheet Hub" "Copied '$SELECTION' to clipboard."
+        $TERMINAL bash -c "less \"$TARGET_FILE\""
     fi
 else
-    log "ERROR: '$SELECTION' could not be resolved locally or externally."
-    notify-send "Cheat Sheet Launcher" "Error: '$SELECTION' not found locally or externally."
+    log_event "ERROR: '$SELECTION' could not be resolved."
+    notify_hub critical 3000 "Cheatsheet Hub" "Error: '$SELECTION' not found."
 fi
-
-log "Script execution complete."
